@@ -108,6 +108,7 @@ export function TaskCard3D({
     <div
       ref={provided.innerRef}
       {...provided.draggableProps}
+      {...provided.dragHandleProps}
       style={provided.draggableProps.style}
       className="perspective-1000 mb-3 last:mb-0"
     >
@@ -122,7 +123,7 @@ export function TaskCard3D({
         animate={{
           scale: snapshot.isDragging ? 1.04 : 1,
         }}
-        className={`glass-card group relative overflow-hidden rounded-2xl border p-4 transition-colors ${
+        className={`glass-card group relative cursor-grab select-none overflow-hidden rounded-2xl border p-4 transition-colors active:cursor-grabbing ${
           snapshot.isDragging
             ? "z-50 border-cyan-400/60 bg-slate-900/90 shadow-[0_18px_45px_rgba(34,211,238,0.28)]"
             : task.completed
@@ -175,7 +176,7 @@ export function TaskCard3D({
             )}
           </div>
 
-          {/* Drag Handle & Delete Actions */}
+          {/* Drag Indicator & Delete Actions */}
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
@@ -187,9 +188,8 @@ export function TaskCard3D({
             </button>
 
             <div
-              {...provided.dragHandleProps}
-              title="Перетащить в другой квадрант"
-              className="cursor-grab rounded-lg p-1.5 text-slate-500 transition hover:bg-white/10 hover:text-slate-200 active:cursor-grabbing"
+              title="Перетащите карточку за любую область"
+              className="rounded-lg p-1.5 text-slate-500 transition group-hover:text-slate-300"
             >
               <GripVertical className="h-4 w-4" />
             </div>
@@ -269,10 +269,11 @@ export function TaskCard3D({
             >
               <div className="mt-2.5 space-y-1.5 rounded-xl border border-white/5 bg-black/30 p-2.5">
                 {task.subtasks.map((sub) => (
-                  <div
+                  <button
                     key={sub.id}
+                    type="button"
                     onClick={() => onToggleSubtask(task.id, sub.id, !sub.completed)}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-xs transition hover:bg-white/5"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs transition hover:bg-white/5"
                   >
                     <div
                       className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition ${
@@ -292,7 +293,7 @@ export function TaskCard3D({
                     >
                       {sub.title}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </motion.div>
