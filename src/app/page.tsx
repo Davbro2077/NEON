@@ -8,6 +8,19 @@ import { EisenhowerMatrix } from "@/components/EisenhowerMatrix";
 import { QuadrantId, TaskItem } from "@/types/task";
 import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 
+async function parseJsonResponse<T extends { error?: string }>(
+  res: Response
+): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {
+      error: `Ошибка сервера (HTTP ${res.status}). Попробуйте ещё раз.`,
+    } as T;
+  }
+}
+
 export default function HomePage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,11 +43,14 @@ export default function HomePage() {
     try {
       setIsLoading(true);
       const res = await fetch("/api/tasks", { cache: "no-store" });
+      const data = await parseJsonResponse<{
+        tasks?: TaskItem[];
+        model?: string | null;
+        error?: string;
+      }>(res);
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Не удалось загрузить задачи из БД");
+        throw new Error(data.error || "Не удалось загрузить задачи из БД");
       }
-      const data = await res.json();
       setTasks(data.tasks || []);
       if (data.model) setActiveModel(data.model);
     } catch (err) {
@@ -65,14 +81,18 @@ export default function HomePage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse<{
+        tasks?: TaskItem[];
+        model?: string | null;
+        error?: string;
+      }>(res);
       if (!res.ok) {
         throw new Error(data.error || "Ошибка разбора текста через Gemini API");
       }
 
       if (data.model) setActiveModel(data.model);
       if (Array.isArray(data.tasks)) {
-        setTasks((prev) => [...data.tasks, ...prev]);
+        setTasks((prev) => [...data.tasks!, ...prev]);
         showNotice(
           "success",
           `ИИ распознал и сохранил в БД задач: ${data.tasks.length}`
@@ -104,11 +124,17 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quadrant: targetQuadrant }),
       });
-      if (!res.ok) throw new Error("Не удалось обновить квадрант в БД");
+      if (!res.ok) {
+        const data = await parseJsonResponse<{ error?: string }>(res);
+        throw new Error(data.error || "Не удалось обновить квадрант в БД");
+      }
     } catch (err) {
       console.error(err);
       setTasks(previousTasks);
-      showNotice("error", "Не удалось сохранить перемещение задачи в БД");
+      showNotice(
+        "error",
+        err instanceof Error ? err.message : "Не удалось сохранить перемещение задачи в БД"
+      );
     }
   };
 
@@ -125,11 +151,17 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed }),
       });
-      if (!res.ok) throw new Error("Не удалось обновить статус задачи");
+      if (!res.ok) {
+        const data = await parseJsonResponse<{ error?: string }>(res);
+        throw new Error(data.error || "Не удалось обновить статус задачи");
+      }
     } catch (err) {
       console.error(err);
       setTasks(previousTasks);
-      showNotice("error", "Ошибка сохранения статуса задачи в БД");
+      showNotice(
+        "error",
+        err instanceof Error ? err.message : "Ошибка сохранения статуса задачи в БД"
+      );
     }
   };
 
@@ -142,11 +174,17 @@ export default function HomePage() {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Не удалось удалить задачу");
+      if (!res.ok) {
+        const data = await parseJsonResponse<{ error?: string }>(res);
+        throw new Error(data.error || "Не удалось удалить задачу");
+      }
     } catch (err) {
       console.error(err);
       setTasks(previousTasks);
-      showNotice("error", "Ошибка удаления задачи из БД");
+      showNotice(
+        "error",
+        err instanceof Error ? err.message : "Ошибка удаления задачи из БД"
+      );
     }
   };
 
@@ -164,7 +202,11 @@ export default function HomePage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse<{
+        subtasks?: TaskItem["subtasks"];
+        model?: string | null;
+        error?: string;
+      }>(res);
       if (!res.ok) {
         throw new Error(
           data.error || "Не удалось разбить задачу на подзадачи"
@@ -175,7 +217,7 @@ export default function HomePage() {
       if (Array.isArray(data.subtasks)) {
         setTasks((prev) =>
           prev.map((t) =>
-            t.id === task.id ? { ...t, subtasks: data.subtasks } : t
+            t.id === task.id ? { ...t, subtasks: data.subtasks! } : t
           )
         );
         showNotice("success", "Подзадачи сгенерированы ИИ и сохранены в БД");
@@ -222,11 +264,17 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed, taskId }),
       });
-      if (!res.ok) throw new Error("Не удалось обновить подзадачу");
+      if (!res.ok) {
+        const data = await parseJsonResponse<{ error?: string }>(res);
+        throw new Error(data.error || "Не удалось обновить подзадачу");
+      }
     } catch (err) {
       console.error(err);
       setTasks(previousTasks);
-      showNotice("error", "Не удалось обновить статус подзадачи");
+      showNotice(
+        "error",
+        err instanceof Error ? err.message : "Не удалось обновить статус подзадачи"
+      );
     }
   };
 

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDbSchema } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -38,9 +41,10 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("PATCH /api/subtasks/[id] error:", err);
-    return NextResponse.json(
-      { error: "Не удалось обновить статус подзадачи" },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Не удалось обновить статус подзадачи";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -4,19 +4,20 @@ import { getActiveGeminiModel } from "@/lib/gemini";
 import { QuadrantId, Subtask, TaskItem } from "@/types/task";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 export async function GET() {
   try {
     const db = await ensureDbSchema();
 
-    const tasksResult = await db.execute(
-      `SELECT id, title, category, quadrant, priority_reason, deadline, completed, created_at
-       FROM tasks
-       ORDER BY created_at DESC`
-    );
-
-    const subtasksResult = await db.execute(
-      `SELECT id, task_id, title, completed FROM subtasks`
+    const [tasksResult, subtasksResult] = await db.batch(
+      [
+        `SELECT id, title, category, quadrant, priority_reason, deadline, completed, created_at
+         FROM tasks
+         ORDER BY created_at DESC`,
+        `SELECT id, task_id, title, completed FROM subtasks`,
+      ],
+      "read"
     );
 
     const subtasksByTask = new Map<string, Subtask[]>();
@@ -54,9 +55,10 @@ export async function GET() {
     });
   } catch (err) {
     console.error("GET /api/tasks error:", err);
-    return NextResponse.json(
-      { error: "Не удалось получить задачи из базы данных Turso" },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Не удалось получить задачи из базы данных Turso";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

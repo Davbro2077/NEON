@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDbSchema } from "@/lib/db";
 import { QuadrantId } from "@/types/task";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
 const VALID_QUADRANTS = new Set<QuadrantId>([
   "urgent_important",
   "not_urgent_important",
@@ -46,10 +49,11 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("PATCH /api/tasks/[id] error:", err);
-    return NextResponse.json(
-      { error: "Не удалось обновить задачу в базе данных" },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Не удалось обновить задачу в базе данных";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -61,21 +65,27 @@ export async function DELETE(
     const { id } = await context.params;
     const db = await ensureDbSchema();
 
-    await db.execute({
-      sql: "DELETE FROM subtasks WHERE task_id = ?",
-      args: [id],
-    });
-    await db.execute({
-      sql: "DELETE FROM tasks WHERE id = ?",
-      args: [id],
-    });
+    await db.batch(
+      [
+        {
+          sql: "DELETE FROM subtasks WHERE task_id = ?",
+          args: [id],
+        },
+        {
+          sql: "DELETE FROM tasks WHERE id = ?",
+          args: [id],
+        },
+      ],
+      "write"
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/tasks/[id] error:", err);
-    return NextResponse.json(
-      { error: "Не удалось удалить задачу из базы данных" },
-      { status: 500 }
-    );
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Не удалось удалить задачу из базы данных";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

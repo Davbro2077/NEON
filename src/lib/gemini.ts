@@ -1,33 +1,32 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { cleanEnv } from "@/lib/db";
 import { QuadrantId } from "@/types/task";
 
-// Приоритетный список моделей: сначала запрашиваемые Flash 3.8 / 3.6 / 3.5,
-// а затем актуальные доступные Flash-модели на случай, если какие-то алиасы недоступны для ключа.
+const MODEL_TIMEOUT_MS = 15_000;
+
+// Самая быстрая и стабильная модель (gemini-3.5-flash) идёт первой,
+// далее резервные 3.6 / 3.8 на случай временной недоступности.
 const MODEL_CANDIDATES = [
-  process.env.GEMINI_MODEL,
-  "gemini-3.8-flash",
-  "gemini-3.6-flash",
+  cleanEnv(process.env.GEMINI_MODEL),
   "gemini-3.5-flash",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-].filter((m): m is string => Boolean(m && m.trim()));
+  "gemini-3.6-flash",
+  "gemini-3.8-flash",
+].filter((m): m is string => Boolean(m));
 
 let cachedWorkingModel: string | null = null;
 
 function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = cleanEnv(process.env.GEMINI_API_KEY);
   if (!apiKey || apiKey === "your_gemini_api_key_here") {
     throw new Error(
-      "GEMINI_API_KEY не настроен на сервере. Добавьте ключ в файл .env.local и перезапустите сервер."
+      "GEMINI_API_KEY не настроен на сервере. Добавьте ключ в Environment Variables в Vercel / .env.local."
     );
   }
   return new GoogleGenAI({ apiKey });
 }
 
 export function getActiveGeminiModel(): string | null {
-  return cachedWorkingModel || process.env.GEMINI_MODEL || null;
+  return cachedWorkingModel || cleanEnv(process.env.GEMINI_MODEL) || null;
 }
 
 export interface ParsedAiTask {
@@ -44,6 +43,20 @@ function clampToSevenWords(text: string): string {
   return words.slice(0, 7).join(" ");
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("MODEL_TIMEOUT")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function generateWithFallback<T>(
   runner: (ai: GoogleGenAI, model: string) => Promise<T>
 ): Promise<{ result: T; model: string }> {
@@ -57,7 +70,7 @@ async function generateWithFallback<T>(
 
   for (const model of modelsToTry) {
     try {
-      const result = await runner(ai, model);
+      const result = await withTimeout(runner(ai, model), MODEL_TIMEOUT_MS);
       cachedWorkingModel = model;
       return { result, model };
     } catch (err: unknown) {
@@ -67,6 +80,8 @@ async function generateWithFallback<T>(
       }
       const msg = err instanceof Error ? err.message : String(err);
       const shouldFallback =
+        msg.includes("MODEL_TIMEOUT") ||
+        msg.includes("timeout") ||
         msg.includes("404") ||
         msg.includes("NOT_FOUND") ||
         msg.includes("not found") ||

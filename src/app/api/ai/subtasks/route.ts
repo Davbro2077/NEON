@@ -3,6 +3,9 @@ import { ensureDbSchema } from "@/lib/db";
 import { generateSubtasksWithGemini } from "@/lib/gemini";
 import { Subtask } from "@/types/task";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
@@ -26,27 +29,29 @@ export async function POST(request: NextRequest) {
 
     const db = await ensureDbSchema();
 
-    // Удаляем предыдущие подзадачи этой задачи при повторной генерации
-    await db.execute({
-      sql: "DELETE FROM subtasks WHERE task_id = ?",
-      args: [taskId],
-    });
-
     const savedSubtasks: Subtask[] = [];
+    const statements: Array<{ sql: string; args: Array<string | number> }> = [
+      {
+        sql: "DELETE FROM subtasks WHERE task_id = ?",
+        args: [taskId],
+      },
+    ];
+
     for (const subTitle of generatedTitles) {
       const subId = crypto.randomUUID();
-      await db.execute({
-        sql: `INSERT INTO subtasks (id, task_id, title, completed) VALUES (?, ?, ?, 0)`,
-        args: [subId, taskId, subTitle],
-      });
-
       savedSubtasks.push({
         id: subId,
         taskId,
         title: subTitle,
         completed: false,
       });
+      statements.push({
+        sql: `INSERT INTO subtasks (id, task_id, title, completed) VALUES (?, ?, ?, 0)`,
+        args: [subId, taskId, subTitle],
+      });
     }
+
+    await db.batch(statements, "write");
 
     return NextResponse.json({
       subtasks: savedSubtasks,
